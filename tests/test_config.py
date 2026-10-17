@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import pytest
 
@@ -37,6 +37,11 @@ def test_startup_authentication_polling_and_shutdown():
         app.main()
         cls.assert_called_once_with('opaque-secret-placeholder', threaded=True, num_threads=4, validate_token=False)
         cls.return_value.get_me.assert_called_once()
+        cls.return_value.delete_webhook.assert_called_once_with(drop_pending_updates=True)
+        calls = cls.return_value.mock_calls
+        assert calls.index(call.get_me()) < calls.index(call.delete_webhook(drop_pending_updates=True))
+        assert calls.index(call.delete_webhook(drop_pending_updates=True)) < next(
+            index for index, item in enumerate(calls) if item[0] == 'infinity_polling')
         cls.return_value.infinity_polling.assert_called_once()
         cls.return_value.stop_polling.assert_called_once()
         jobs.return_value.close.assert_called_once()
@@ -47,6 +52,23 @@ def test_failed_authentication_does_not_poll_or_expose_token():
          patch.object(app.shutil, 'which', return_value='/usr/bin/tool'), \
          patch.object(app.telebot, 'TeleBot') as cls, patch.object(app, 'Jobs') as jobs:
         cls.return_value.get_me.side_effect = RuntimeError('PRIVATE')
+        with pytest.raises(SystemExit) as error:
+            app.main()
+        assert 'PRIVATE' not in str(error.value)
+        cls.return_value.infinity_polling.assert_not_called()
+        cls.return_value.delete_webhook.assert_not_called()
+        jobs.return_value.close.assert_called_once()
+
+
+@pytest.mark.parametrize('failure', [False, RuntimeError('PRIVATE')])
+def test_failed_webhook_removal_does_not_start_polling(failure):
+    with patch.object(app.Config, 'from_env', return_value=Config('PRIVATE')), \
+         patch.object(app.shutil, 'which', return_value='/usr/bin/tool'), \
+         patch.object(app.telebot, 'TeleBot') as cls, patch.object(app, 'Jobs') as jobs:
+        if isinstance(failure, Exception):
+            cls.return_value.delete_webhook.side_effect = failure
+        else:
+            cls.return_value.delete_webhook.return_value = failure
         with pytest.raises(SystemExit) as error:
             app.main()
         assert 'PRIVATE' not in str(error.value)

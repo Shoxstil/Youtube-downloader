@@ -146,6 +146,10 @@ def main():
     app.register()
     try:
         bot.get_me()
+        # Telegram не разрешает getUpdates при активном webhook.
+        # Этот бот работает через polling и при запуске пропускает старые сообщения.
+        if not bot.delete_webhook(drop_pending_updates=True):
+            raise RuntimeError("Не удалось отключить webhook")
     except Exception as error:
         jobs.close()
         raise SystemExit(f"Не удалось подключиться к Telegram ({type(error).__name__}). Проверь токен и сеть.") from None
