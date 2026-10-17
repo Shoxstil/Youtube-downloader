@@ -16,7 +16,7 @@ Python-бот на **pyTelegramBotAPI**. **yt-dlp** получает видео 
 
 ## Установка
 
-Нужен **Python 3.10+** и **FFmpeg** с `ffprobe` в `PATH`.
+Рекомендуется **Python 3.12**: установка и тесты проверены на этой версии. Также нужен **FFmpeg** с `ffprobe` в `PATH`. Предварительные версии Python, включая 3.15, не проверены: для них могут отсутствовать готовые пакеты зависимостей.
 
 Ubuntu/Debian:
 
@@ -36,7 +36,33 @@ python -m pip install -r requirements.txt
 cp .env.example .env
 ```
 
-В Windows вместо `source` используйте `.venv\Scripts\activate`, вместо `cp` — `copy`.
+### Windows (PowerShell)
+
+Установите Python 3.12 с python.org (с Python Launcher) или командой:
+
+```powershell
+winget install --exact --id Python.Python.3.12
+```
+
+Откройте новое окно PowerShell в каталоге проекта:
+
+```powershell
+py -3.12 -m venv .venv312
+.\.venv312\Scripts\python.exe -m pip install --upgrade pip
+.\.venv312\Scripts\python.exe -m pip install -r requirements.txt
+if (!(Test-Path .env)) { Copy-Item .env.example .env }
+notepad .env
+```
+
+После сохранения токена запустите:
+
+```powershell
+.\.venv312\Scripts\python.exe youtube_down.py
+```
+
+Активация окружения не требуется. Отдельное имя `.venv312` позволяет сохранить старое окружение и существующий `.env`. Если `py -3.12` не найден, проверьте установку Python 3.12 и Launcher.
+
+Ошибка `Building wheel for brotli` / `Microsoft Visual C++ 14.0 or greater is required` означает, что pip пытается собрать зависимость из исходников. Если в выводе есть `cpython-315`, используется Python 3.15. Выполните команды выше с Python 3.12; устанавливать компилятор для обычного запуска бота не требуется.
 
 Получите **новый** токен у [@BotFather](https://t.me/BotFather), впишите его в `.env`:
 
