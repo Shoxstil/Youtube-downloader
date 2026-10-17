@@ -16,6 +16,45 @@ HOSTS = {"tiktok.com", "www.tiktok.com", "m.tiktok.com", "vm.tiktok.com", "vt.ti
 class MediaError(Exception):
     """Ошибка, которую можно показать пользователю."""
 
+    def __init__(self, message: str, code: str = "media"):
+        super().__init__(message)
+        self.code = code
+
+
+def explain_download_error(error: DownloadError, stage: str) -> MediaError:
+    """Классифицируем ответ yt-dlp, не публикуя URL, cookies и сырые ошибки."""
+    details = str(error).lower()
+    rules = (
+        (("certificate_verify_failed", "certificate verify failed", "curl: (60)"), "tls",
+         "Не удалось проверить сертификат сайта. Проверь дату Windows, обнови yt-dlp и certifi. "
+         "Если используешь VPN/антивирус с HTTPS-фильтром, проверь его настройки."),
+        (("proxyerror", "proxy error", "unable to connect to proxy", "tunnel connection failed"), "proxy",
+         "Не удалось подключиться через прокси. Проверь настройки прокси и доступ к сайту."),
+        (("429", "too many requests", "rate-limit", "rate limit"), "rate_limit",
+         "Сайт ограничил частоту запросов. Подожди и попробуй снова; частые повторы не помогут."),
+        (("login required", "login_required", "log in", "sign in", "login", "cookies", "private video", "private account"), "login",
+         "Сайт требует вход или доступ к аккаунту. При необходимости настрой YTDLP_COOKIE_FILE "
+         "с собственными cookies по инструкции в README. Токен Telegram здесь не поможет."),
+        (("403", "forbidden", "blocked", "captcha", "not available in your country", "geo restricted"), "access_denied",
+         "Сайт отклонил запрос (ограничение IP, региона или проверка посетителя). "
+         "Проверь доступ к публикации в браузере на этом компьютере. Может потребоваться вход."),
+        (("404", "not found", "has been removed", "unavailable", "does not exist"), "unavailable",
+         "Публикация недоступна или удалена. Проверь ссылку в браузере."),
+        (("timed out", "timeout", "connection", "getaddrinfo", "name resolution"), "network",
+         "Не удалось связаться с сайтом. Проверь интернет, DNS и настройки VPN/прокси."),
+        (("requested format is not available", "no video formats", "no video in this post"), "format",
+         "Сайт не предоставил подходящий видеоформат. Проверь, что это одно видео, "
+         "обнови yt-dlp и попробуй снова."),
+        (("unable to extract", "unsupported url", "empty media response", "webpage video data"), "extractor",
+         "yt-dlp не смог разобрать ответ сайта. Обнови yt-dlp. Если ошибка останется, "
+         "нужна проверка конкретной ссылки: сайт мог изменить страницу или ограничить доступ."),
+    )
+    for markers, code, message in rules:
+        if any(marker in details for marker in markers):
+            return MediaError(message, f"{stage}:{code}")
+    return MediaError("Не удалось получить данные от сайта. Нужны ссылка и этот код ошибки "
+                      "для дальнейшей проверки. Попробуй также обновить yt-dlp.", f"{stage}:unknown")
+
 
 def parse_url(text: str) -> str:
     text = text.strip()
@@ -79,9 +118,8 @@ class Downloader:
         try:
             with yt_dlp.YoutubeDL(self.options()) as ydl:
                 info = ydl.extract_info(url, download=False)
-        except DownloadError:
-            raise MediaError("Не удалось получить видео. Проверьте ссылку: публикация должна быть "
-                             "доступна. Сервис также может требовать вход или ограничивать запросы.") from None
+        except DownloadError as error:
+            raise explain_download_error(error, "inspect") from None
         if not info or info.get("_type") in {"playlist", "multi_video"} or "entries" in info:
             raise MediaError("Пришлите ссылку на одно видео. Альбомы и подборки не поддерживаются.")
         if info.get("is_live") or info.get("live_status") in {"is_live", "is_upcoming"}:
@@ -126,9 +164,8 @@ class Downloader:
         try:
             with yt_dlp.YoutubeDL(options) as ydl:
                 ydl.extract_info(info.url, download=True)
-        except DownloadError:
-            raise MediaError("Не удалось скачать выбранный формат. Попробуйте другое качество. "
-                             "Доступ к публикации мог измениться.") from None
+        except DownloadError as error:
+            raise explain_download_error(error, "download") from None
         files = [p for p in directory.glob("media.*") if p.suffix not in {".part", ".ytdl", ".temp"}]
         if len(files) != 1:
             raise MediaError("Файл не получен: он может превышать лимит. Попробуйте меньшее качество.")

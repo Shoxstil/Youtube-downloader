@@ -117,13 +117,16 @@ class BotApp:
 
     def report_error(self, chat_id: int, message_id: int, error: Exception):
         if isinstance(error, MediaError):
-            text = str(error)
+            text = f"{error}\nКод: {error.code}"
         elif isinstance(error, ApiException):
             text = "Telegram не принял файл или запрос. Попробуй меньшее качество и пришли ссылку снова."
         else:
             text = "Не удалось обработать видео. Попробуй другую ссылку или повтори позже."
         # Исключение целиком может содержать URL с токеном или cookies.
-        log.warning("Задание не выполнено: %s", type(error).__name__)
+        if isinstance(error, MediaError):
+            log.warning("Задание не выполнено [%s]: %s", error.code, str(error))
+        else:
+            log.warning("Задание не выполнено: %s", type(error).__name__)
         try:
             self.bot.edit_message_text(f"⚠️ {text}", chat_id, message_id)
         except Exception:

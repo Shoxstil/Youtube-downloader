@@ -156,3 +156,23 @@ def test_real_oversized_download_is_rejected(media_server, tmp_path):
     downloader = Downloader(Config('unused', max_bytes=100))
     with pytest.raises(MediaError):
         downloader.download(MediaInfo(media_server, 'Large', ()), Choice('source', 'Source'), tmp_path)
+
+
+@pytest.mark.parametrize('details, code', [
+    ('HTTP Error 403: Forbidden', 'access_denied'),
+    ('HTTP Error 429: Too Many Requests', 'rate_limit'),
+    ('Login required; use cookies', 'login'),
+    ('Unable to extract webpage video data', 'extractor'),
+    ('certificate verify failed', 'tls'),
+    ('Unable to connect to proxy', 'proxy'),
+    ('Connection timed out', 'network'),
+    ('HTTP Error 404: Not Found', 'unavailable'),
+    ('Requested format is not available', 'format'),
+    ('Something unexpected', 'unknown'),
+])
+def test_download_diagnostics_do_not_leak_private_details(details, code):
+    from downloader_bot.media import explain_download_error
+    error = explain_download_error(DownloadError(details + ' https://private.example/?token=SECRET'), 'inspect')
+    assert error.code == 'inspect:' + code
+    assert 'SECRET' not in str(error)
+    assert 'private.example' not in str(error)
